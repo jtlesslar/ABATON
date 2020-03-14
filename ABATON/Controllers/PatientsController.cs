@@ -60,14 +60,16 @@ namespace ABATON.Controllers
             if (existingPatient == null)
             {
                 return NotFound();
-            }
+            }          
 
             //trying to restore a patient
             if (existingPatient.Deleted && !patient.Deleted)
             {
                 return BadRequest("Cannot restore a patient");
             }
-            
+
+            _context.Entry(existingPatient).State = EntityState.Detached;
+
             _context.Entry(patient).State = EntityState.Modified;
 
             await _context.SaveChangesAsync();

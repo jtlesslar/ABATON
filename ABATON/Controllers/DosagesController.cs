@@ -68,6 +68,18 @@ namespace ABATON.Controllers
                 return BadRequest("Cannot restore a dosage");
             }
 
+            if (!_relationshipService.CheckPatientExists(dosage.PatientId))
+            {
+                return BadRequest("Patient does not exist or is deleted");
+            }
+
+            if (!_relationshipService.CheckDrugExists(dosage.DrugId))
+            {
+                return BadRequest("Drug does not exist or is deleted");
+            }
+
+            _context.Entry(existingDosage).State = EntityState.Detached;
+
             _context.Entry(dosage).State = EntityState.Modified;
 
             await _context.SaveChangesAsync();
@@ -88,12 +100,12 @@ namespace ABATON.Controllers
 
             if (!_relationshipService.CheckPatientExists(dosage.PatientId))
             {
-                return BadRequest("Patient does not exist");
+                return BadRequest("Patient does not exist or is deleted");
             }
 
             if (!_relationshipService.CheckDrugExists(dosage.DrugId))
             {
-                return BadRequest("Drug does not exist");
+                return BadRequest("Drug does not exist or is deleted");
             }
             
             _context.Dosages.Add(dosage);

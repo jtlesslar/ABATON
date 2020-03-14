@@ -68,6 +68,8 @@ namespace ABATON.Controllers
                 return BadRequest("Cannot restore a drug");
             }
 
+            _context.Entry(existingdrug).State = EntityState.Detached;
+
             _context.Entry(drug).State = EntityState.Modified;
 
             await _context.SaveChangesAsync();
