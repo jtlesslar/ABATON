@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ABATON.Models;
+using ABATON.Services;
 
 namespace ABATON.Controllers
 {
@@ -14,10 +15,12 @@ namespace ABATON.Controllers
     public class DosagesController : ControllerBase
     {
         private readonly DosageContext _context;
+        private readonly IRelationshipService _relationshipService;
 
-        public DosagesController(DosageContext context)
+        public DosagesController(DosageContext context, IRelationshipService irs)
         {
             _context = context;
+            _relationshipService = irs;
         }
 
         // GET: api/Dosages
@@ -52,23 +55,22 @@ namespace ABATON.Controllers
                 return BadRequest();
             }
 
+            var existingDosage = await _context.Dosages.FindAsync(id);
+
+            if (existingDosage == null)
+            {
+                return NotFound();
+            }
+
+            //trying to restore a patient
+            if (existingDosage.Deleted && !dosage.Deleted)
+            {
+                return BadRequest("Cannot restore a dosage");
+            }
+
             _context.Entry(dosage).State = EntityState.Modified;
 
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!DosageExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+            await _context.SaveChangesAsync();
 
             return NoContent();
         }
@@ -79,10 +81,25 @@ namespace ABATON.Controllers
         [HttpPost]
         public async Task<ActionResult<Dosage>> PostDosage(Dosage dosage)
         {
+            if (dosage.Deleted)
+            {
+                return BadRequest("Cannot add a deleted dosage");
+            }
+
+            if (!_relationshipService.CheckPatientExists(dosage.PatientId))
+            {
+                return BadRequest("Patient does not exist");
+            }
+
+            if (!_relationshipService.CheckDrugExists(dosage.DrugId))
+            {
+                return BadRequest("Drug does not exist");
+            }
+            
             _context.Dosages.Add(dosage);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetDosage", new { id = dosage.Id }, dosage);
+            return CreatedAtAction(nameof(GetDosage), new { id = dosage.Id }, dosage);
         }
 
         // DELETE: api/Dosages/5
@@ -95,6 +112,11 @@ namespace ABATON.Controllers
                 return NotFound();
             }
 
+            if (dosage.Deleted)
+            {
+                return BadRequest("dosage already deleted");
+            }
+
             _context.Dosages.Remove(dosage);
             await _context.SaveChangesAsync();
 
@@ -103,7 +125,7 @@ namespace ABATON.Controllers
 
         private bool DosageExists(long id)
         {
-            return _context.Dosages.Any(e => e.Id == id);
+            return _context.Dosages.Any(e => e.Id == id && !e.Deleted);
         }
     }
 }

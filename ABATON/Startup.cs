@@ -12,6 +12,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using ABATON.Models;
+using ABATON.Services;
 
 namespace ABATON
 {
@@ -27,6 +28,24 @@ namespace ABATON
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            
+            var PatientOptions = new DbContextOptionsBuilder<PatientContext>()
+                .UseInMemoryDatabase("Patients").Options;
+            var DrugOptions = new DbContextOptionsBuilder<DrugContext>()
+                .UseInMemoryDatabase("Drugs").Options;
+            var DosagesOptions = new DbContextOptionsBuilder<DosageContext>()
+                .UseInMemoryDatabase("Dosage").Options;
+
+            var PatientCont = new PatientContext(PatientOptions);
+            var DrugCont = new DrugContext(DrugOptions);
+            var DosageCont = new DosageContext(DosagesOptions);
+
+            IRelationshipService Relationship = new RelationshipService(PatientCont, 
+                DrugCont,
+                DosageCont);
+
+            services.AddSingleton(Relationship);
+
             services.AddDbContext<PatientContext>(opt =>
                 opt.UseInMemoryDatabase("Patients"));
             services.AddDbContext<DrugContext>(opt =>
@@ -34,6 +53,7 @@ namespace ABATON
             services.AddDbContext<DosageContext>(opt =>
                 opt.UseInMemoryDatabase("Dosage"));
             services.AddControllers();
+                        
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

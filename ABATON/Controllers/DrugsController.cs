@@ -6,28 +6,31 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ABATON.Models;
+using ABATON.Services;
 
 namespace ABATON.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class DrugsController : ControllerBase
+    public class drugsController : ControllerBase
     {
         private readonly DrugContext _context;
+        private readonly IRelationshipService _relationshipService;
 
-        public DrugsController(DrugContext context)
+        public drugsController(DrugContext context, IRelationshipService irs)
         {
             _context = context;
+            _relationshipService = irs;
         }
 
-        // GET: api/Drugs
+        // GET: api/drugs
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Drug>>> GetDrugs()
         {
             return await _context.Drugs.ToListAsync();
         }
 
-        // GET: api/Drugs/5
+        // GET: api/drugs/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Drug>> GetDrug(long id)
         {
@@ -41,7 +44,7 @@ namespace ABATON.Controllers
             return drug;
         }
 
-        // PUT: api/Drugs/5
+        // PUT: api/drugs/5
         // To protect from overposting attacks, please enable the specific properties you want to bind to, for
         // more details see https://aka.ms/RazorPagesCRUD.
         [HttpPut("{id}")]
@@ -52,40 +55,45 @@ namespace ABATON.Controllers
                 return BadRequest();
             }
 
+            var existingdrug = await _context.Drugs.FindAsync(id);
+
+            if (existingdrug == null)
+            {
+                return NotFound();
+            }
+
+            //trying to restore a drug
+            if (existingdrug.Deleted && !drug.Deleted)
+            {
+                return BadRequest("Cannot restore a drug");
+            }
+
             _context.Entry(drug).State = EntityState.Modified;
 
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!DrugExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+            await _context.SaveChangesAsync();
 
             return NoContent();
         }
 
-        // POST: api/Drugs
+        // POST: api/drugs
         // To protect from overposting attacks, please enable the specific properties you want to bind to, for
         // more details see https://aka.ms/RazorPagesCRUD.
         [HttpPost]
         public async Task<ActionResult<Drug>> PostDrug(Drug drug)
         {
+            if (drug.Deleted)
+            {
+                return BadRequest("Cannot add a deleted drug");
+            }
+
             _context.Drugs.Add(drug);
+
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetDrug", new { id = drug.Id }, drug);
+            return CreatedAtAction(nameof(GetDrug), new { id = drug.Id }, drug);
         }
 
-        // DELETE: api/Drugs/5
+        // DELETE: api/drugs/5
         [HttpDelete("{id}")]
         public async Task<ActionResult<Drug>> DeleteDrug(long id)
         {
@@ -95,15 +103,24 @@ namespace ABATON.Controllers
                 return NotFound();
             }
 
-            _context.Drugs.Remove(drug);
-            await _context.SaveChangesAsync();
+            if (drug.Deleted)
+            {
+                return BadRequest("drug already deleted");
+            }
 
+            drug.Deleted = true;
+                        
+            _context.Entry(drug).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+            
+            await _relationshipService.DeleteDosageDrugId(id);
+            
             return drug;
         }
 
         private bool DrugExists(long id)
         {
-            return _context.Drugs.Any(e => e.Id == id);
+            return _context.Drugs.Any(e => e.Id == id && !e.Deleted);
         }
     }
 }

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ABATON.Models;
+using ABATON.Services;
 
 namespace ABATON.Controllers
 {
@@ -14,10 +15,12 @@ namespace ABATON.Controllers
     public class PatientsController : ControllerBase
     {
         private readonly PatientContext _context;
+        private readonly IRelationshipService _relationshipService;
 
-        public PatientsController(PatientContext context)
+        public PatientsController(PatientContext context, IRelationshipService irs)
         {
             _context = context;
+            _relationshipService = irs;
         }
 
         // GET: api/Patients
@@ -31,7 +34,7 @@ namespace ABATON.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Patient>> GetPatient(long id)
         {
-            var patient = await _context.Patients.FindAsync(id);
+            var patient = await _context.Patients.FindAsync(id);        
 
             if (patient == null)
             {
@@ -51,24 +54,23 @@ namespace ABATON.Controllers
             {
                 return BadRequest();
             }
+            
+            var existingPatient = await _context.Patients.FindAsync(id);
 
+            if (existingPatient == null)
+            {
+                return NotFound();
+            }
+
+            //trying to restore a patient
+            if (existingPatient.Deleted && !patient.Deleted)
+            {
+                return BadRequest("Cannot restore a patient");
+            }
+            
             _context.Entry(patient).State = EntityState.Modified;
 
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!PatientExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+            await _context.SaveChangesAsync();
 
             return NoContent();
         }
@@ -79,10 +81,16 @@ namespace ABATON.Controllers
         [HttpPost]
         public async Task<ActionResult<Patient>> PostPatient(Patient patient)
         {
-            _context.Patients.Add(patient);
+            if (patient.Deleted)
+            {
+                return BadRequest("Cannot add a deleted patient");
+            }
+
+            _context.Patients.Add(patient);           
+
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetPatient", new { id = patient.Id }, patient);
+            return CreatedAtAction(nameof(GetPatient), new { id = patient.Id }, patient);
         }
 
         // DELETE: api/Patients/5
@@ -95,15 +103,24 @@ namespace ABATON.Controllers
                 return NotFound();
             }
 
-            _context.Patients.Remove(patient);
+            if (patient.Deleted)
+            {
+                return BadRequest("Patient already deleted");
+            }
+
+            patient.Deleted = true;
+                       
+            _context.Entry(patient).State = EntityState.Modified;
             await _context.SaveChangesAsync();
+
+            await _relationshipService.DeleteDosagePatientId(id);
 
             return patient;
         }
 
         private bool PatientExists(long id)
         {
-            return _context.Patients.Any(e => e.Id == id);
+            return _context.Patients.Any(e => e.Id == id && !e.Deleted);
         }
     }
 }
